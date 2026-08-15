@@ -752,6 +752,46 @@ def cmd_digest(args: argparse.Namespace) -> int:
         db.close()
 
 
+def cmd_publish(args: argparse.Namespace) -> int:
+    """Build the dashboard bundle for a static host."""
+    from .deploy import publish
+
+    cfg = load_config(Path(args.config) if args.config else None)
+    cfg.ensure_dirs()
+
+    try:
+        publish.assert_target_protected(
+            args.target or "", protected_by=args.protected_by or ""
+        )
+    except publish.UnprotectedTarget as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    db = Database(cfg.db_path)
+    try:
+        out = Path(args.out) if args.out else (cfg.data_root / "publish")
+        bundle = publish.build(
+            db, cfg, out, protected_by=args.protected_by or "",
+            limit=args.limit,
+        )
+        print(bundle.to_text())
+        print()
+        print(f"Protected by: {args.protected_by}")
+        print()
+        print(
+            "This bundle is CONFIDENTIAL work product -- it names real "
+            "parties, carries damages estimates, and describes how their "
+            "cases might be monetized. It fetches nothing, so it raises no "
+            "source-terms question of its own, but it must not sit on an "
+            "unauthenticated host."
+        )
+        print()
+        print(f"Upload the CONTENTS of {bundle.directory}")
+        return 0
+    finally:
+        db.close()
+
+
 def cmd_preflight(args: argparse.Namespace) -> int:
     """Is it safe and lawful to host this? Exits non-zero when not."""
     from .deploy import preflight
@@ -1014,6 +1054,22 @@ def main(argv: list[str] | None = None) -> int:
              "the environment. Refuses loudly otherwise.",
     )
     p_dig.set_defaults(func=cmd_digest)
+
+    p_pub = sub.add_parser(
+        "publish",
+        help="build the dashboard bundle for a static host (no server needed)",
+    )
+    p_pub.add_argument("--out", help="bundle directory (default <data_root>/publish)")
+    p_pub.add_argument("--target", default="",
+                       help="where it is going, e.g. a hostname. Checked "
+                            "against hosts that are public by default.")
+    p_pub.add_argument(
+        "--protected-by", default="",
+        help="REQUIRED. Name what restricts access, e.g. \"Cloudflare Access, "
+             "allowlist of 2 emails\". Recorded in the bundle manifest.",
+    )
+    p_pub.add_argument("--limit", type=int, default=None)
+    p_pub.set_defaults(func=cmd_publish)
 
     p_pre = sub.add_parser(
         "preflight",

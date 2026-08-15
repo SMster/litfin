@@ -64,6 +64,42 @@ model = "claude-opus-5"
 # runaway crawl cannot produce a surprise bill.
 max_candidates_per_day = 400
 
+[deployment]
+# The CourtListener scope determination. `litfin preflight` refuses a hosted
+# deployment while this is empty and a RESEARCH_ONLY source is enabled.
+#
+# Free text on purpose: no boolean could honestly represent a judgment, and a
+# boolean is exactly what somebody would flip without making one.
+courtlistener_scope_resolved = """
+2026-08-15, determination by the operator (not counsel, not FLP).
+
+Free Law Project permits "personal, educational, research, journalistic, and
+exploratory use" and bars "tools for for-profit or non-profit organizations,
+even if those tools aren't sold."
+
+Determination: IN SCOPE. This is two individuals looking at litigation-finance
+matters for their own interest. It is not connected to a firm, fund, or
+employer's work; it is not sold; there is no organization whose work it
+supports. That is personal and exploratory use, which the clause permits
+expressly. Note the bar is on tools FOR AN ORGANIZATION -- "not sold" alone
+would not have been sufficient.
+
+WHAT INVALIDATES THIS, and the point of writing it down:
+  * anyone using output to inform a fund's or firm's deal sourcing, paid or not
+  * any user beyond the two named individuals
+  * any revenue, fee, or carried interest connected to it
+  * incorporating, or operating on behalf of an entity
+
+Any of those makes this determination false. The honest response is to set
+purpose = "commercial" -- which disables CourtListener loudly rather than
+using it under terms that no longer apply -- and email
+partnerships@free.law, who license commercial access.
+
+NOT YET DONE, and worth doing regardless: get a CourtListener API token. It
+identifies us, raises the rate ceiling, and the $10/mo membership supports the
+organization whose data this is. See HANDOFF.md.
+"""
+
 [score]
 # Scoring is tunable here. Re-ranking reads only stored extractions, so
 # changing anything below costs seconds and zero API calls:

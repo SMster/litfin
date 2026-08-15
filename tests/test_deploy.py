@@ -404,3 +404,121 @@ class TestDeploymentAssets:
                 continue
             assert "2>&1" in line, line
             assert "2>/dev/null" not in line, line
+
+
+# ---------------------------------------------------------------------------
+# Publishing the dashboard bundle
+# ---------------------------------------------------------------------------
+
+class TestPublishGuard:
+    """The bundle names real parties in real litigation, carries damages
+    estimates, and describes how their cases might be monetized. Publishing it
+    to an open host is the one irreversible mistake available here."""
+
+    @pytest.mark.parametrize("target", [
+        "smster.github.io",
+        "https://user.github.io/litfin",
+        "raw.githubusercontent.com/x/y",
+        "my-bucket.s3.amazonaws.com",
+        "storage.googleapis.com/bucket",
+        "litfin.surge.sh",
+    ])
+    def test_public_by_default_hosts_are_refused(self, target):
+        from litfin.deploy import publish
+
+        with pytest.raises(publish.UnprotectedTarget):
+            publish.assert_target_protected(target, protected_by="whatever")
+
+    def test_refusal_says_WHY_that_host_is_public(self):
+        """A generic 'unsafe' teaches nothing. Naming the mechanism is what
+        stops the next person reaching for the same host."""
+        from litfin.deploy import publish
+
+        with pytest.raises(publish.UnprotectedTarget, match="GitHub Pages"):
+            publish.assert_target_protected("x.github.io", protected_by="y")
+
+    def test_protected_by_is_required(self):
+        """The value of the check is that publishing requires SAYING what
+        protects it -- which is the moment somebody notices nothing does."""
+        from litfin.deploy import publish
+
+        with pytest.raises(publish.UnprotectedTarget, match="protected-by"):
+            publish.assert_target_protected("litfin.pages.dev", protected_by="")
+        with pytest.raises(publish.UnprotectedTarget):
+            publish.assert_target_protected("litfin.pages.dev", protected_by="   ")
+
+    def test_a_named_protection_on_a_neutral_host_passes(self):
+        from litfin.deploy import publish
+
+        publish.assert_target_protected(
+            "litfin.pages.dev", protected_by="Cloudflare Access, 2 emails"
+        )
+
+
+class TestPublishBundle:
+    def _bundle(self, tmp_path):
+        from litfin.config import Config
+        from litfin.deploy import publish
+        from litfin.store.db import Database
+
+        cfg = Config(data_root=tmp_path / "data")
+        cfg.ensure_dirs()
+        db = Database(cfg.db_path)
+        try:
+            return publish.build(
+                db, cfg, tmp_path / "out",
+                protected_by="Cloudflare Access, 2 emails",
+            )
+        finally:
+            db.close()
+
+    def test_bundle_contains_a_self_contained_dashboard(self, tmp_path):
+        b = self._bundle(tmp_path)
+        index = b.directory / "index.html"
+        assert index.is_file()
+        html = index.read_text(encoding="utf-8")
+        assert "<script src=" not in html, "must need no network to render"
+
+    def test_bundle_ships_no_control_panel(self, tmp_path):
+        """A static bundle must not show buttons that cannot work -- and must
+        certainly not show ones that spend money."""
+        html = (self._bundle(tmp_path).directory / "index.html").read_text(
+            encoding="utf-8"
+        )
+        assert 'id="panel"' not in html
+        assert "data-job=" not in html
+
+    def test_bundle_asks_not_to_be_indexed(self, tmp_path):
+        b = self._bundle(tmp_path)
+        assert "Disallow: /" in (b.directory / "robots.txt").read_text()
+        headers = (b.directory / "_headers").read_text()
+        assert "noindex" in headers
+
+    def test_manifest_records_what_protects_it(self, tmp_path):
+        import json
+
+        b = self._bundle(tmp_path)
+        m = json.loads((b.directory / "manifest.json").read_text())
+        assert m["protected_by"] == "Cloudflare Access, 2 emails"
+        assert m["fetches_anything"] is False
+        assert "Confidential" in m["contains"]
+
+    def test_rebuild_clears_stale_rows(self, tmp_path):
+        """A stale row from a previous publish is worse than no row: it looks
+        current and is not."""
+        b = self._bundle(tmp_path)
+        stale = b.directory / "stale-from-last-week.html"
+        stale.write_text("old", encoding="utf-8")
+        b2 = self._bundle(tmp_path)
+        assert not stale.exists()
+        assert (b2.directory / "index.html").is_file()
+
+    def test_the_hosted_artifact_fetches_nothing(self, tmp_path):
+        """The whole reason this deployment shape sidesteps the source-terms
+        question: nothing on the host talks to a third party."""
+        import json
+
+        b = self._bundle(tmp_path)
+        assert json.loads((b.directory / "manifest.json").read_text())[
+            "fetches_anything"
+        ] is False

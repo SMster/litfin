@@ -10,7 +10,7 @@ and the running state is in `HANDOFF.md`.
 
 ## Status
 
-**All phases (0–7) are complete and verified against live data.** 507 tests
+**All phases (0–7) are complete and verified against live data.** 522 tests
 pass; ~2,190 items across 12 sources; 193 documents extracted by Opus and
 **131 distinct matters** ranked. See `HANDOFF.md` for full session state,
 blockers, and next steps.
@@ -490,6 +490,25 @@ These came from probing live hosts; each is recorded where it is enforced.
 
 ## Hosting it
 
+**Start with the dashboard, not the pipeline** — see
+`deploy/HOSTING-DASHBOARD.md`.
+
+```bash
+.venv/Scripts/python.exe -m litfin.cli publish     --target litfin.pages.dev --protected-by "Cloudflare Access, 2 emails"
+```
+
+The dashboard is one self-contained HTML file, so hosting it needs no server,
+no database and no credentials on the host — and the hosted box **fetches
+nothing**, so no source's terms are engaged by it at all. Collection stays on
+your machine, where the research purpose is unambiguous.
+
+`publish` refuses to target a host that is public by default (GitHub Pages, a
+naked S3 bucket), and refuses to run without `--protected-by` naming what
+restricts access. The dashboard names real parties in real litigation and
+carries damages estimates; it is confidential work product, not a web page.
+
+### Hosting the whole pipeline
+
 **Read `SECURITY.md` and `deploy/README.md` first, and run the preflight:**
 
 ```bash
@@ -569,12 +588,13 @@ src/litfin/
   score/        taxonomy.py exclude.py scoring.py cluster.py
   deliver/      dataset.py dashboard.py digest.py mailer.py server.py
                 excel.py auth.py
-  deploy/       preflight.py
+  deploy/       preflight.py publish.py
 deploy/         Dockerfile docker-compose.yml crontab README.md
+                HOSTING-DASHBOARD.md
   store/        db.py artifacts.py schema.sql
   canary/       framework.py
   runner/       orchestrator.py
-tests/          507 tests + captured fixtures
+tests/          522 tests + captured fixtures
 ```
 
 `deliver/dataset.py` is one assembly step feeding three renderers. The
