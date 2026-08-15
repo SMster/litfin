@@ -1,0 +1,130 @@
+# LitFin runtime configuration.
+#
+# NOTE ON `purpose`: this is not a comment or a label. The compliance layer
+# reads it at every fetch. Sources marked RESEARCH_ONLY (currently
+# CourtListener/RECAP) are ENABLED when this is "research" and RAISE when it
+# is anything else. If this project ever becomes firm infrastructure or a
+# revenue-generating product, change this to "commercial" -- the affected
+# sources will disable loudly rather than continue under terms that no longer
+# apply. See docs/tos/ and src/litfin/compliance/registry.py.
+purpose = "research"
+
+[identity]
+# Sent as the User-Agent on every request. This is functional, not cosmetic:
+# SEC and FTC 403 undeclared agents.
+#
+# MEASURED 2026-08-15 against sec.gov and ftc.gov. Two things 403 both WAFs:
+#   1. an HTTP library token in the UA (e.g. "python-httpx")
+#   2. ANY url in the UA, independent of domain
+# So contact_url is intentionally left EMPTY -- name + contact email is the
+# shape SEC's fair-access guidance asks for and the shape that works. If you
+# set contact_url, re-probe both hosts before running at volume.
+#
+# contact_email MUST be a mailbox you actually read, and it MUST be real. It
+# is the only way a site operator can reach you instead of silently blocking
+# the crawler, and SEC's fair-access guidance asks for it by name.
+#
+# The committed value is a placeholder so a public repo does not publish
+# somebody's address. SET IT BEFORE YOUR FIRST RUN -- an unedited placeholder
+# is worse than no contact at all, because it looks like a real declaration
+# and reaches nobody. Either edit this line, or set LITFIN_CONTACT_EMAIL in
+# .env, which wins over this file.
+app_name = "LitFinDocketMonitor"
+app_version = "0.1.0"
+contact_url = ""
+contact_email = "you@example.com"
+
+[paths]
+# Deliberately OFF the OneDrive-synced Downloads tree: OneDrive sync corrupts
+# SQLite databases.
+data_root = 'C:\LitFinData'
+
+[budget]
+max_requests_per_day = 10000
+warn_at_fraction = 0.8
+
+[http]
+timeout_seconds = 30.0
+max_attempts = 4
+cache_ttl_hours = 24
+
+[breaker]
+failure_threshold = 5
+open_seconds = 1800
+
+[compliance]
+# Per-source-id opt-in for UNVERIFIED sources. There is deliberately no global
+# "enable everything" switch. Adding an id here is a typed, deliberate act and
+# should follow a real ToS read recorded in docs/tos/.
+unverified_opt_in = []
+
+[extract]
+model = "claude-opus-5"
+# Hard cap on candidates entering LLM extraction per day. Bounds cost so a
+# runaway crawl cannot produce a surprise bill.
+max_candidates_per_day = 400
+
+[score]
+# Scoring is tunable here. Re-ranking reads only stored extractions, so
+# changing anything below costs seconds and zero API calls:
+#   .venv/Scripts/python.exe -m litfin.cli rank
+# Uncomment and edit to override; anything omitted uses the default in
+# src/litfin/score/scoring.py.
+
+# [score.weights]
+# How much each factor contributes to the final score. Should sum to ~1.0.
+# thesis_fit        = 0.25
+# damages           = 0.20
+# recency           = 0.15
+# collectability    = 0.15
+# venue             = 0.10
+# practice_fit      = 0.10
+# source_confidence = 0.05
+
+# [score.event_fit]
+# How de-risked each event type is, 0..1. The defaults are weighted toward
+# NEAR AND POST SETTLEMENT: a settled case has an agreed number and a payer
+# who has already decided not to fight, while a judgment still faces
+# post-trial motions, appeal, and collection. Raise judgment_entered above
+# settlement_final_approval if you want the litigator's ordering back.
+# settlement_final_approval       = 1.00
+# settlement_preliminary_approval = 0.97
+# settlement_reached              = 0.95
+# judgment_entered                = 0.88
+# jury_verdict                    = 0.82
+# plan_confirmation               = 0.80
+# appeal_filed                    = 0.78
+# judgment_proposed               = 0.70
+# enforcement_action              = 0.45
+# case_filed                      = 0.10
+# no_event                        = 0.00
+
+[deliver]
+# Email defaults to dry-run. Live sending requires BOTH send_enabled = true
+# and a non-empty recipient_allowlist. Two independent conditions on purpose:
+# the first catches "I did not mean to send at all", the second catches
+# "I meant to send, but not there." An automated pipeline that mails a
+# prospect list to the wrong address cannot be un-sent.
+send_enabled = false
+recipient_allowlist = []
+top_n_email = 20
+top_n_dashboard = 100
+
+[etrack]
+# NY eTrack alert-email ingestion (Phase 6). OFF, and it takes two separate
+# decisions to turn on.
+#
+# `decision_recorded` is the legal one. etrack_email is RESTRICTED, not
+# permitted: receiving alerts you subscribed to is plainly not "accessing the
+# site by an automated program", but the SEPARATE "may not be mined" clause in
+# the UCS terms is broad enough that a conservative reading could reach
+# automated parsing of those alerts. Put a name and a date here when somebody
+# has actually decided that question. An empty string means nobody has.
+#
+# `enabled` is the operational one, and also needs LITFIN_IMAP_HOST /
+# LITFIN_IMAP_USER / LITFIN_IMAP_PASSWORD in .env, pointed at a DEDICATED
+# mailbox that receives nothing else.
+#
+# Scraping NY UCS directly stays PROHIBITED regardless of either switch.
+decision_recorded = ""
+enabled = false

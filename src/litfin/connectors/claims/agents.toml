@@ -1,0 +1,126 @@
+# Claims-agent routing table.
+#
+# Maps the agent name AS PRINTED on a court's assignment list to a canonical
+# vendor, and records where that vendor publishes its case dockets.
+#
+# WHY THIS IS DATA AND NOT SCRAPED. The courts publish two different things: a
+# directory of vendors approved in that district, and a list of which vendor
+# was retained in which case. The directory tells you a vendor exists; it does
+# NOT tell you that vendor's case-search endpoint, and every district prints
+# the same vendor's name differently. Resolution has to happen against a
+# curated list, so it lives here where a new alias is an edit rather than a
+# deploy.
+#
+# `tos_source_id` points at the compliance registry. Anything blank -- or any
+# id not registered -- fails closed as UNVERIFIED, which is the correct answer
+# for a vendor nobody has reviewed. NOTHING here authorizes crawling a vendor
+# site; the routing table exists so that Phase 7 has somewhere to start once a
+# review clears, and so the chapter 11 census can name the agent today.
+#
+# MEASURED 2026-08-15 across deb, nysb, njb and ohsb.
+
+[[agent]]
+id = "epiq"
+name = "Epiq Corporate Restructuring, LLC"
+tos_source_id = "claims_epiq"
+case_index = "https://dm.epiq11.com/"
+# "Epiq" alone is how ohsb prints it; nysb prints the full LLC name.
+aliases = ["epiq", "epiq corporate restructuring", "epiq bankruptcy solutions",
+           "epiq systems"]
+
+[[agent]]
+id = "stretto"
+name = "Stretto"
+tos_source_id = "claims_stretto"
+case_index = "https://cases.stretto.com/"
+aliases = ["stretto", "bankruptcy management solutions"]
+
+[[agent]]
+id = "kroll"
+name = "Kroll Restructuring Administration LLC"
+tos_source_id = "claims_kroll"
+case_index = "https://cases.ra.kroll.com/"
+# Prime Clerk was renamed, not retired: njb still prints "Prime Clerk (now
+# Kroll Restructuring)" on cases retained under the old name. Dropping the old
+# alias would orphan every pre-2022 assignment.
+aliases = ["kroll", "kroll restructuring administration", "prime clerk",
+           "ra kroll"]
+note = "claims_kroll is PROHIBITED in the registry (403s an identified client). The routing entry names the vendor; it does not enable fetching it."
+
+[[agent]]
+id = "verita"
+name = "Kurtzman Carson Consultants LLC dba Verita Global"
+tos_source_id = "claims_verita"
+case_index = "https://www.veritaglobal.net/"
+aliases = ["verita", "verita global", "kurtzman carson", "kurtzman carson consultants",
+           "kcc"]
+
+[[agent]]
+id = "omni"
+name = "Omni Agent Solutions"
+tos_source_id = "claims_omni"
+case_index = "https://omniagentsolutions.com/"
+aliases = ["omni", "omni agent solutions", "omni management group",
+           "omni management"]
+
+[[agent]]
+id = "angeion"
+name = "Donlin, Recano & Company, LLC (c/o Angeion Group)"
+tos_source_id = "claims_angeion"
+case_index = "https://www.donlinrecano.com/"
+# Donlin Recano now operates under Angeion. Both names appear on live court
+# pages, sometimes in the same cell.
+aliases = ["donlin", "donlin recano", "donlin, recano", "recano", "angeion"]
+
+[[agent]]
+id = "bmc"
+name = "BMC Group, Inc."
+tos_source_id = "claims_bmc"
+case_index = "https://www.bmcgroup.com/"
+aliases = ["bmc", "bmc group"]
+
+# -- vendors that appear on court directories but have NO registry policy.
+# get_policy() fails closed to UNVERIFIED for these, which is the right
+# default. They are listed so an assignment naming them resolves to a known
+# vendor instead of firing the unmapped alarm.
+
+[[agent]]
+id = "logan"
+name = "Logan & Company, Inc."
+tos_source_id = ""
+case_index = ""
+aliases = ["logan", "logan & company", "logan and company"]
+
+[[agent]]
+id = "reliable"
+name = "Reliable Companies"
+tos_source_id = ""
+case_index = ""
+aliases = ["reliable", "reliable companies"]
+
+[[agent]]
+id = "american_legal"
+name = "American Legal Claim Services LLC"
+tos_source_id = ""
+case_index = ""
+aliases = ["american legal", "american legal claim services"]
+
+[[agent]]
+id = "gcg"
+name = "Garden City Group, LLC (acquired by Epiq, 2018)"
+tos_source_id = ""
+case_index = ""
+aliases = ["gcg", "garden city group"]
+# Deliberately NOT folded into the epiq entry. GCG was acquired by Epiq in
+# 2018, but the census records who the court actually retained -- and a
+# pre-2018 GCG case is not reachable from Epiq's current case index. Mapping
+# it to epiq would produce a routing entry that looks usable and is not.
+# Found by the unmapped-agent alarm on nysb's mega case list.
+note = "historical; surfaced by the unmapped-agent alarm 2026-08-15 on nysb"
+
+[[agent]]
+id = "cpt"
+name = "CPT Group, Inc."
+tos_source_id = ""
+case_index = ""
+aliases = ["cpt", "cpt group"]

@@ -1,0 +1,47 @@
+# LitFin schedule. Times are in the container's TZ (set TZ in .env).
+#
+# CADENCE, and why each is what it is:
+#
+#   daily 05:00   collect. Most sources publish on a business-day rhythm and
+#                 a full run takes several minutes because the rate limits are
+#                 deliberately conservative.
+#   daily 05:40   extract, then collect the batch an hour later. The Batches
+#                 API is used because latency is irrelevant here and it halves
+#                 the cost; results are not instant.
+#   daily 07:00   rank + dashboard, so the morning list is ready.
+#   Mon   04:30   the weekly sources -- JPML moves by a handful of entries a
+#                 month, the claims-agent lists at the same pace, and
+#                 uscourts.gov declares Crawl-delay: 10. Runs BEFORE Tuesday
+#                 so the weekly digest includes them.
+#   Tue   07:30   THE WEEKLY EMAIL. Runs after that morning's rank, so the
+#                 list it sends is the list the dashboard shows.
+#
+# Every job appends to /data/logs. A scheduled job that fails silently looks
+# exactly like a quiet week, which is the failure this whole codebase is
+# built to avoid -- so nothing here is `2>/dev/null`.
+
+SHELL=/bin/sh
+PATH=/usr/local/bin:/usr/bin:/bin
+
+# -- daily ------------------------------------------------------------------
+0  5 * * *   litfin run          >> /data/logs/run.log 2>&1
+40 5 * * *   litfin extract      >> /data/logs/extract.log 2>&1
+40 6 * * *   litfin extract --collect >> /data/logs/extract.log 2>&1
+0  7 * * *   litfin rank         >> /data/logs/rank.log 2>&1
+5  7 * * *   litfin dashboard    >> /data/logs/rank.log 2>&1
+
+# -- weekly sources, Monday so Tuesday's digest includes them ---------------
+30 4 * * 1   litfin run --weekly >> /data/logs/run.log 2>&1
+
+# -- THE TUESDAY EMAIL ------------------------------------------------------
+# `--send` is strict on purpose: it RAISES if deliver.send_enabled is false,
+# if SMTP is unset, or if any recipient is off the allowlist. It does not
+# quietly fall back to a dry run, because a digest that silently stops sending
+# is indistinguishable from a quiet week.
+#
+# Until SMTP is configured this line fails every Tuesday and says why in
+# digest.log. That is the intended behaviour, not a bug to paper over.
+30 7 * * 2   litfin digest --send >> /data/logs/digest.log 2>&1
+
+# -- weekly housekeeping ----------------------------------------------------
+0  3 * * 0   litfin coverage --refresh >> /data/logs/coverage.log 2>&1

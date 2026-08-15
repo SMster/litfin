@@ -1,0 +1,36 @@
+# Secrets. NEVER commit these.
+.env
+.env.*
+!.env.example
+
+# Local environment
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Data lives at C:\LitFinData by design, but guard against a misconfigured
+# data_root writing into the repo.
+data/
+*.db
+*.db-wal
+*.db-shm
+raw/
+httpcache/
+runs/
+manifest/
+mail/
+
+# Captured fixtures from a PRIVATE VENDOR. Stretto's terms permit us to read
+# their public case index (see compliance/registry.py for the verbatim
+# review); redistributing their data in a public repo is a different act and
+# one nobody has reviewed. Court fixtures under tests/fixtures/claims/ are
+# public-domain government works and DO ship.
+tests/fixtures/stretto/
+
+# Generated deliverables, in case data_root is ever pointed at the repo.
+dashboard.html
+*.xlsx

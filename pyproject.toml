@@ -1,0 +1,32 @@
+[project]
+name = "litfin"
+version = "0.1.0"
+description = "Daily de-risked litigation-finance case sourcing pipeline (research project)"
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.28",
+    "lxml>=6.0",
+    "pydantic>=2.10",
+    "anthropic>=0.122",
+    "jinja2>=3.1",
+    "zstandard>=0.23",
+    "pypdf>=5.0",
+    "python-dateutil>=2.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+litfin = "litfin.cli:main"
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

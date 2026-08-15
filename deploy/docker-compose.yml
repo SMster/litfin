@@ -1,0 +1,93 @@
+# LitFin — always-on deployment.
+#
+#   docker compose --env-file ../.env up -d --build
+#
+# Run `litfin preflight` FIRST. It refuses a deployment whose security or
+# compliance posture is unresolved, and the `preflight` service below runs it
+# on every `up` so a misconfigured stack fails at start rather than a week
+# later.
+
+name: litfin
+
+x-common: &common
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+  restart: unless-stopped
+  environment:
+    LITFIN_DATA_ROOT: /data
+    TZ: ${TZ:-America/New_York}
+    # Secrets come from --env-file, never from this file, which is committed.
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    COURTLISTENER_TOKEN: ${COURTLISTENER_TOKEN:-}
+    LITFIN_CONTACT_EMAIL: ${LITFIN_CONTACT_EMAIL:-}
+    LITFIN_WEBHOOK_SECRET: ${LITFIN_WEBHOOK_SECRET:-}
+    LITFIN_WEB_USER: ${LITFIN_WEB_USER:-}
+    LITFIN_WEB_PASSWORD: ${LITFIN_WEB_PASSWORD:-}
+    LITFIN_SESSION_SECRET: ${LITFIN_SESSION_SECRET:-}
+    LITFIN_RECIPIENTS: ${LITFIN_RECIPIENTS:-}
+    LITFIN_SMTP_HOST: ${LITFIN_SMTP_HOST:-}
+    LITFIN_SMTP_PORT: ${LITFIN_SMTP_PORT:-587}
+    LITFIN_SMTP_USER: ${LITFIN_SMTP_USER:-}
+    LITFIN_SMTP_PASSWORD: ${LITFIN_SMTP_PASSWORD:-}
+    LITFIN_SMTP_FROM: ${LITFIN_SMTP_FROM:-}
+  volumes:
+    - litfin-data:/data
+
+services:
+  # Fails the stack early when the deployment is not safe or lawful to run.
+  # Exits 0 and stays exited when everything passes.
+  preflight:
+    <<: *common
+    restart: "no"
+    command: ["litfin", "preflight"]
+
+  # The pipeline. Holds full rights: it fetches, extracts, and sends.
+  scheduler:
+    <<: *common
+    depends_on:
+      preflight:
+        condition: service_completed_successfully
+    command: ["/app/deploy/entrypoint-scheduler.sh"]
+
+  # The panel. READ-ONLY: it serves the dashboard and the Excel export and the
+  # server REFUSES run/extract/collect, rather than merely hiding the buttons.
+  # Spending money and fetching third-party sites belong to the scheduler,
+  # which nobody can reach over the network.
+  web:
+    <<: *common
+    depends_on:
+      preflight:
+        condition: service_completed_successfully
+    command:
+      - litfin
+      - serve
+      - --host=0.0.0.0
+      - --port=8788
+      - --no-browser
+      - --read-only
+    ports:
+      # Bound to loopback ON THE HOST. Put a TLS-terminating reverse proxy in
+      # front of it -- session cookies are set Secure and sign-in will simply
+      # not work over plain HTTP. Change to "8788:8788" only behind a proxy
+      # that terminates TLS.
+      - "127.0.0.1:8788:8788"
+
+  # CourtListener webhook receiver. Needs a publicly reachable URL, so this is
+  # the one service that genuinely wants to be exposed. Its only job is to
+  # write a row and answer 2xx in under a second; `webhook --drain` does the
+  # processing out of band.
+  webhook:
+    <<: *common
+    depends_on:
+      preflight:
+        condition: service_completed_successfully
+    command: ["litfin", "webhook", "--host=0.0.0.0", "--port=8787"]
+    ports:
+      - "127.0.0.1:8787:8787"
+    profiles: ["webhook"]
+
+volumes:
+  litfin-data:
+    # Named volume, so a rebuild cannot destroy the corpus, the watermarks, or
+    # the extraction spend they represent.

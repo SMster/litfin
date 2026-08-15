@@ -1,0 +1,143 @@
+# State Attorney General press-release feeds.
+#
+# STATUS OF THIS LIST, measured 2026-08-15: 40 candidate URLs were probed
+# across 24 states using the common CMS conventions. SEVEN returned a real
+# feed. The prior research estimate of "30-40 of 50 will have a working feed"
+# was optimistic by a wide margin.
+#
+# The two highest-value states are both dark:
+#   NY  -- 403 to an identified client on every path tried (WAF). Per this
+#          project's standing rule, a 403 to an honest client is treated as
+#          refusal of consent, NOT as a puzzle to route around.
+#   TX  -- 404 on every path tried; if they publish a feed it is somewhere
+#          unguessable.
+#
+# Multistate AG settlements (opioids, pharma, consumer protection, antitrust)
+# are announced with dollar figures and are the largest publicly-disclosed
+# settlement category outside securities -- so the states that DO work are
+# worth having even at 14% coverage. The connector reports coverage honestly
+# rather than implying the other 43 states are quiet.
+#
+# TO ADD A STATE: find the feed, confirm it returns <rss> or <feed> with
+# items, add it below with status = "verified" and the date you checked.
+# Anything not listed here is simply unknown, not known-absent.
+
+[[feed]]
+state = "CA"
+name = "California Attorney General"
+url = "https://oag.ca.gov/rss.xml"
+status = "verified"
+verified_at = "2026-08-15"
+
+[[feed]]
+state = "CO"
+name = "Colorado Attorney General"
+url = "https://coag.gov/feed/"
+status = "verified"
+verified_at = "2026-08-15"
+
+[[feed]]
+state = "MO"
+name = "Missouri Attorney General"
+url = "https://ago.mo.gov/feed"
+status = "verified"
+verified_at = "2026-08-15"
+
+[[feed]]
+state = "NC"
+name = "North Carolina Department of Justice"
+url = "https://ncdoj.gov/feed/"
+status = "verified"
+verified_at = "2026-08-15"
+
+[[feed]]
+state = "OR"
+name = "Oregon Department of Justice"
+url = "https://www.doj.state.or.us/feed/"
+status = "verified"
+verified_at = "2026-08-15"
+
+[[feed]]
+state = "PA"
+name = "Pennsylvania Attorney General"
+url = "https://www.attorneygeneral.gov/feed/"
+status = "verified"
+verified_at = "2026-08-15"
+
+[[feed]]
+state = "UT"
+name = "Utah Attorney General"
+url = "https://attorneygeneral.utah.gov/feed/"
+status = "verified"
+verified_at = "2026-08-15"
+
+# --- Probed and NOT working. Recorded so nobody re-probes them blindly. ---
+
+[[blocked]]
+state = "NY"
+reason = "403 to an identified client on ag.ny.gov (WAF). Treated as refusal of consent."
+probed_at = "2026-08-15"
+urls_tried = [
+  "https://ag.ny.gov/rss/press-releases.xml",
+  "https://ag.ny.gov/press-releases.rss",
+  "https://ag.ny.gov/rss.xml",
+]
+
+[[blocked]]
+state = "TX"
+reason = "404 on every path tried; feed location unknown."
+probed_at = "2026-08-15"
+urls_tried = [
+  "https://www.texasattorneygeneral.gov/rss/news.xml",
+  "https://www.texasattorneygeneral.gov/news/releases/feed",
+  "https://www.texasattorneygeneral.gov/rss.xml",
+]
+
+[[blocked]]
+state = "FL"
+reason = "403 to an identified client."
+probed_at = "2026-08-15"
+urls_tried = ["http://www.myfloridalegal.com/newsrel.nsf/newsreleases.xml"]
+
+[[blocked]]
+state = "MA"
+reason = "403 to an identified client."
+probed_at = "2026-08-15"
+urls_tried = ["https://www.mass.gov/orgs/office-of-attorney-general-maura-healey/news.atom"]
+
+[[blocked]]
+state = "NJ"
+reason = "403 to an identified client."
+probed_at = "2026-08-15"
+urls_tried = ["https://www.njoag.gov/feed/"]
+
+[[blocked]]
+state = "WA"
+reason = "403 to an identified client."
+probed_at = "2026-08-15"
+urls_tried = ["https://www.atg.wa.gov/rss/news-releases.xml"]
+
+[[blocked]]
+state = "MI"
+reason = "403 to an identified client."
+probed_at = "2026-08-15"
+urls_tried = ["https://www.michigan.gov/ag/news/rss"]
+
+[[blocked]]
+state = "IL"
+reason = "404 on every path tried."
+probed_at = "2026-08-15"
+urls_tried = [
+  "https://illinoisattorneygeneral.gov/rss/pressroom.xml",
+  "https://illinoisattorneygeneral.gov/feed/",
+  "https://illinoisattorneygeneral.gov/news/feed/",
+]
+
+[[blocked]]
+state = "OH"
+reason = "404 on every path tried."
+probed_at = "2026-08-15"
+urls_tried = [
+  "https://www.ohioattorneygeneral.gov/RSS/Media-Releases",
+  "https://www.ohioattorneygeneral.gov/feed",
+]
