@@ -1,0 +1,91 @@
+# Render Blueprint — the full pipeline on one always-on service.
+#
+# ONE SERVICE, NOT FOUR, and the reason is a hard Render constraint rather
+# than a preference: a persistent disk attaches to exactly one service. The
+# docker-compose layout runs scheduler / web / webhook as separate containers
+# sharing a named volume, and that does not map onto Render at all. Everything
+# that touches /data has to live in the same process tree.
+#
+# So this service runs cron AND the web panel together. That is fine here --
+# the corpus is ~15 MB and there is exactly one writer, which is also what
+# SQLite in WAL mode wants.
+#
+#   Render dashboard -> New -> Blueprint -> point at this repo
+#
+# THE FREE TIER WILL NOT WORK, and it fails in a way that looks like success:
+# free instances have no persistent disk and spin down after inactivity. The
+# service would come up, serve the dashboard, and quietly lose the corpus --
+# every watermark, every artifact, and the extraction spend they represent --
+# on the first idle timeout. A paid instance with a disk is required.
+
+services:
+  - type: web
+    name: litfin
+    runtime: docker
+    dockerfilePath: ./deploy/Dockerfile
+    dockerContext: .
+    # Starter or above. NOT free -- see the note above.
+    plan: starter
+    region: oregon
+    branch: main
+    # A disk pins the service to a single instance, which is exactly what we
+    # want: one SQLite writer, no coordination problem.
+    numInstances: 1
+    healthCheckPath: /healthz
+    dockerCommand: /app/deploy/entrypoint-render.sh
+
+    disk:
+      name: litfin-data
+      mountPath: /data
+      # ~15 MB today. 1 GB leaves room for years of raw artifacts; raising it
+      # later is easy, shrinking it is not.
+      sizeGB: 1
+
+    envVars:
+      - key: LITFIN_DATA_ROOT
+        value: /data
+      - key: TZ
+        # The Tuesday digest fires on THIS clock. Set it to the timezone the
+        # recipients actually live in.
+        value: America/New_York
+      - key: PYTHONUNBUFFERED
+        value: "1"
+
+      # -- secrets. sync:false means Render prompts for them and never puts
+      #    them in this file, which is committed to a public repo.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: LITFIN_CONTACT_EMAIL
+        sync: false
+      - key: COURTLISTENER_TOKEN
+        sync: false
+
+      # -- web panel auth. The panel refuses to bind a public interface
+      #    without all three, and Render binds 0.0.0.0 by definition.
+      - key: LITFIN_WEB_USER
+        sync: false
+      - key: LITFIN_WEB_PASSWORD
+        generateValue: true
+      - key: LITFIN_SESSION_SECRET
+        generateValue: true
+
+      # -- the weekly digest
+      - key: LITFIN_RECIPIENTS
+        sync: false
+      - key: LITFIN_SMTP_HOST
+        sync: false
+      - key: LITFIN_SMTP_PORT
+        value: "587"
+      - key: LITFIN_SMTP_USER
+        sync: false
+      - key: LITFIN_SMTP_PASSWORD
+        sync: false
+      - key: LITFIN_SMTP_FROM
+        sync: false
+
+      # Set to "false" ONLY if you want run/extract reachable from the panel.
+      # Default keeps them scheduler-only: a button on the public internet
+      # that spends money on the Anthropic API is a bad idea even behind a
+      # password.
+      - key: LITFIN_WEB_READ_ONLY
+        value: "true"

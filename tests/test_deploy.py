@@ -522,3 +522,84 @@ class TestPublishBundle:
         assert json.loads((b.directory / "manifest.json").read_text())[
             "fetches_anything"
         ] is False
+
+
+# ---------------------------------------------------------------------------
+# Render blueprint
+# ---------------------------------------------------------------------------
+
+class TestRenderBlueprint:
+    """Render attaches a persistent disk to exactly ONE service, so the
+    compose layout (scheduler / web / webhook sharing a volume) does not map
+    onto it. Everything touching /data has to be one process tree."""
+
+    def _blueprint(self):
+        import yaml
+
+        return yaml.safe_load((DEPLOY / "render.yaml").read_text(encoding="utf-8"))
+
+    def test_exactly_one_service_owns_the_disk(self):
+        svcs = self._blueprint()["services"]
+        with_disk = [s for s in svcs if "disk" in s]
+        assert len(with_disk) == 1, "a Render disk attaches to one service only"
+        assert with_disk[0]["disk"]["mountPath"] == "/data"
+
+    def test_pinned_to_a_single_instance(self):
+        """SQLite has one writer. Scaling past 1 would corrupt the invariant
+        that items and watermarks advance in a single transaction."""
+        svc = self._blueprint()["services"][0]
+        assert svc.get("numInstances", 1) == 1
+
+    def test_not_on_the_free_plan(self):
+        """Free instances have no persistent disk and spin down. The service
+        would come up, serve the dashboard, and silently lose the corpus on
+        the first idle timeout."""
+        assert self._blueprint()["services"][0]["plan"] != "free"
+
+    def test_no_secret_has_a_literal_value(self):
+        """render.yaml is committed to a public repo."""
+        svc = self._blueprint()["services"][0]
+        for env in svc["envVars"]:
+            if "value" not in env:
+                continue
+            key = env["key"]
+            assert not any(
+                marker in key
+                for marker in ("PASSWORD", "SECRET", "API_KEY", "TOKEN")
+            ), f"{key} carries a literal value in a committed file"
+
+    def test_credentials_are_prompted_or_generated(self):
+        svc = self._blueprint()["services"][0]
+        by_key = {e["key"]: e for e in svc["envVars"]}
+        for key in ("ANTHROPIC_API_KEY", "LITFIN_SMTP_PASSWORD"):
+            assert by_key[key].get("sync") is False, key
+        for key in ("LITFIN_WEB_PASSWORD", "LITFIN_SESSION_SECRET"):
+            assert by_key[key].get("generateValue") is True, key
+
+    def test_panel_defaults_to_read_only(self):
+        """A button on the public internet that spends money on the Anthropic
+        API is a bad idea even behind a password."""
+        svc = self._blueprint()["services"][0]
+        by_key = {e["key"]: e for e in svc["envVars"]}
+        assert by_key["LITFIN_WEB_READ_ONLY"]["value"] == "true"
+
+    def test_healthcheck_points_at_the_unauthenticated_route(self):
+        """Render's prober has no session. /healthz bypasses auth on purpose
+        and reveals only liveness."""
+        assert self._blueprint()["services"][0]["healthCheckPath"] == "/healthz"
+
+    def test_entrypoint_gates_on_preflight(self):
+        sh = (DEPLOY / "entrypoint-render.sh").read_text(encoding="utf-8")
+        assert "litfin preflight" in sh
+        assert "exit 1" in sh
+        # The gate must precede the server, or it comes up misconfigured.
+        assert sh.index("preflight") < sh.index("litfin serve")
+
+    def test_entrypoint_honours_the_injected_port(self):
+        """Render assigns $PORT; ignoring it fails the health check."""
+        sh = (DEPLOY / "entrypoint-render.sh").read_text(encoding="utf-8")
+        assert "${PORT:-8788}" in sh
+
+    def test_entrypoint_exports_env_for_cron(self):
+        sh = (DEPLOY / "entrypoint-render.sh").read_text(encoding="utf-8")
+        assert "printenv" in sh and "BASH_ENV" in sh

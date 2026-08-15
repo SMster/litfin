@@ -10,7 +10,7 @@ and the running state is in `HANDOFF.md`.
 
 ## Status
 
-**All phases (0–7) are complete and verified against live data.** 522 tests
+**All phases (0–7) are complete and verified against live data.** 532 tests
 pass; ~2,190 items across 12 sources; 193 documents extracted by Opus and
 **131 distinct matters** ranked. See `HANDOFF.md` for full session state,
 blockers, and next steps.
@@ -509,6 +509,16 @@ carries damages estimates; it is confidential work product, not a web page.
 
 ### Hosting the whole pipeline
 
+**Render** — `deploy/render.yaml` is a ready Blueprint; see
+`deploy/HOSTING-RENDER.md`. Three things differ from local: a Render disk
+attaches to **one** service so cron and the panel share a process tree, the
+**free tier cannot work** (no persistent disk, spins down — it would lose the
+corpus on the first idle timeout), and datacenter IPs get blocked more often
+than residential ones, so hosted collection may see fewer sources than local.
+
+Vercel is the wrong shape for this: serverless functions, an ephemeral
+filesystem, and timeouts well under the several minutes a polite `run` takes.
+
 **Read `SECURITY.md` and `deploy/README.md` first, and run the preflight:**
 
 ```bash
@@ -589,12 +599,12 @@ src/litfin/
   deliver/      dataset.py dashboard.py digest.py mailer.py server.py
                 excel.py auth.py
   deploy/       preflight.py publish.py
-deploy/         Dockerfile docker-compose.yml crontab README.md
-                HOSTING-DASHBOARD.md
+deploy/         Dockerfile docker-compose.yml crontab render.yaml
+                README.md HOSTING-DASHBOARD.md HOSTING-RENDER.md
   store/        db.py artifacts.py schema.sql
   canary/       framework.py
   runner/       orchestrator.py
-tests/          522 tests + captured fixtures
+tests/          532 tests + captured fixtures
 ```
 
 `deliver/dataset.py` is one assembly step feeding three renderers. The
