@@ -10,7 +10,7 @@ and the running state is in `HANDOFF.md`.
 
 ## Status
 
-**All phases (0–7) are complete and verified against live data.** 449 tests
+**All phases (0–7) are complete and verified against live data.** 507 tests
 pass; ~2,190 items across 12 sources; 193 documents extracted by Opus and
 **131 distinct matters** ranked. See `HANDOFF.md` for full session state,
 blockers, and next steps.
@@ -488,6 +488,48 @@ These came from probing live hosts; each is recorded where it is enforced.
   migrations run explicitly, and an index on a migrated column cannot live in
   the schema script at all. (`store/db.py:_migrate`)
 
+## Hosting it
+
+**Read `SECURITY.md` and `deploy/README.md` first, and run the preflight:**
+
+```bash
+.venv/Scripts/python.exe -m litfin.cli preflight
+```
+
+It exits non-zero until the deployment is actually safe and lawful to run,
+and prints exactly what is blocking. Two of its checks are not technical:
+
+**The CourtListener scope question.** RECAP is your largest source and it is
+`RESEARCH_ONLY`. Free Law Project permits *"personal, educational, research,
+journalistic, and exploratory use"* but bars building *"tools for for-profit
+or non-profit organizations, even if those tools aren't sold."* A research
+project on a laptop clears that clause; an always-on host serving a team is
+at best arguable, and no amount of code can settle it. Email
+`partnerships@free.law`, then record the answer:
+
+```toml
+[deployment]
+courtlistener_scope_resolved = "emailed FLP 2026-08-20, reply confirms our use is in scope"
+```
+
+The alternative is `purpose = "commercial"`, which disables CourtListener
+*loudly* rather than using it under terms that may no longer apply.
+
+**Web authentication.** `litfin serve` binds loopback and is unauthenticated
+by default — correct for a laptop, unsafe anywhere else, because the panel can
+spend money on the Anthropic API. Any non-loopback bind **refuses to start**
+without `LITFIN_WEB_USER`, `LITFIN_WEB_PASSWORD` (16+ chars) and
+`LITFIN_SESSION_SECRET`, checked before the socket is created.
+
+```bash
+docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
+```
+
+Three services: a `scheduler` with full rights and no network exposure, a
+`web` panel running **`--read-only`** (run/extract/collect are refused by the
+*server*, not merely hidden), and an optional `webhook` receiver. Both ports
+bind to host loopback — put TLS in front, since session cookies are `Secure`.
+
 ## Secrets
 
 `.env` is gitignored and holds `ANTHROPIC_API_KEY`, `COURTLISTENER_TOKEN`, and
@@ -526,11 +568,13 @@ src/litfin/
   extract/      schema.py prompts.py runner.py    <- Opus layer
   score/        taxonomy.py exclude.py scoring.py cluster.py
   deliver/      dataset.py dashboard.py digest.py mailer.py server.py
-                excel.py
+                excel.py auth.py
+  deploy/       preflight.py
+deploy/         Dockerfile docker-compose.yml crontab README.md
   store/        db.py artifacts.py schema.sql
   canary/       framework.py
   runner/       orchestrator.py
-tests/          449 tests + captured fixtures
+tests/          507 tests + captured fixtures
 ```
 
 `deliver/dataset.py` is one assembly step feeding three renderers. The
