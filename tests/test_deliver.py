@@ -203,21 +203,30 @@ class TestDashboardHonesty:
         assert "D. Nev." in html
         assert "absence of signal" in html
 
-    def test_dark_venue_count_is_banner_level(self):
+    def test_dark_venue_count_is_on_the_results_page(self):
+        """The count that says how far to trust an empty result sits in the
+        coverage card, next to the map it describes."""
         html = dashboard.render(make_dataset())
-        banner = html.split('class="controls"')[0]
-        assert "Venue coverage is incomplete" in banner
-        assert "15 court(s) publish no PACER RSS feed" in banner
+        card = html.split('id="coverage"')[1].split("</section>")[0]
+        assert ">15<" in card
+        assert "absence of signal is not absence of activity" in card
 
     def test_broken_source_is_impossible_to_miss(self):
+        """No banner strip any more, so the run stamp carries it: red, counted
+        and linked, above everything else on the page."""
         data = make_dataset(sources=[
             SourceRow("sec_fts", "SEC FTS", "A", "public_domain_gov",
                       "BROKEN", "selector changed", "", 3, 0),
         ])
         html = dashboard.render(data)
-        assert "banner bad" in html
-        assert "not healthy" in html
-        assert "not a quiet day" in html
+        head = html.split('id="results"')[0]
+        assert 'class="runpill down"' in head
+        assert "1 SOURCE DOWN" in head
+        assert 'href="#sources"' in head
+        # And the card it points at says which one, and why.
+        card = html.split('id="sources"')[1]
+        assert "BROKEN" in card
+        assert "selector changed" in card
 
     def test_funnel_counts_explain_an_empty_dashboard(self):
         """'0 prospects' is ambiguous between nothing collected, everything
@@ -228,8 +237,11 @@ class TestDashboardHonesty:
             "ranked": 0, "awaiting_extraction": 193,
         })
         html = dashboard.render(data)
-        assert "1,695" in html
-        assert "193 collected item(s) have not been screened" in html
+        funnel = html.split('class="funnel"')[1].split("</header>")[0]
+        assert "1,695" in funnel
+        # A backlog is a funnel stage: collected, and unable to appear below.
+        assert "193" in funnel
+        assert "awaiting extraction" in funnel
         assert "litfin extract" in html
 
     def test_declared_purpose_is_in_the_header(self):
@@ -676,7 +688,7 @@ class TestExportLink:
         )
         assert 'href="litfin-prospects-2026-08-18.xlsx"' in html
         assert "download" in html
-        assert "Download Excel" in html
+        assert "Excel" in html
 
     def test_href_is_relative_so_the_secret_path_is_not_baked_in(self):
         html = dashboard.render(make_dataset(), export_href="x.xlsx")
@@ -688,10 +700,11 @@ class TestExportLink:
         assert 'onload="evil' not in html
 
 
-class TestStandingCaveats:
-    """Two kinds of banner. Alerts are about THIS run and are actionable;
-    standing caveats are permanent facts that read identically every day. Only
-    the second kind is suppressible."""
+class TestNothingAboveTheResults:
+    """The banner strip is gone. A row of warnings that reads the same every
+    morning stops informing and starts training the reader to skip the top of
+    the page. Every fact it carried has to still be on the page, in the place
+    where it is checkable."""
 
     def _data(self):
         return make_dataset(
@@ -700,43 +713,43 @@ class TestStandingCaveats:
                     "ranked": 1, "awaiting_extraction": 0},
         )
 
-    def test_caveats_render_by_default(self):
-        """A new operator should meet them."""
-        html = dashboard.render(self._data(), standing_caveats=True)
-        assert "Venue coverage is incomplete" in html
-        assert "no stated damages figure" in html
-
-    def test_caveats_suppressed_when_turned_off(self):
-        html = dashboard.render(self._data(), standing_caveats=False)
-        assert "Venue coverage is incomplete" not in html
-        assert "no stated damages figure" not in html
-
-    def test_ALERTS_still_render_when_caveats_are_off(self):
-        """A broken source and an unextracted backlog are state that changed
-        and that you can act on. Suppressing those would be a bug."""
+    def test_no_banner_sits_above_the_results(self):
         data = make_dataset(
+            prospects=[make_prospect(damages_usd=None, damages_imputed=True)],
             sources=[SourceRow("sec_fts", "SEC", "A", "s", "BROKEN", "", "", 2, 0)],
             counts={"items": 10, "screened_out": 1, "extracted": 1,
                     "ranked": 1, "awaiting_extraction": 42},
         )
-        html = dashboard.render(data, standing_caveats=False)
-        assert "not healthy" in html
-        assert "not a quiet day" in html
-        assert "have not been screened" in html
+        html = dashboard.render(data)
+        assert 'class="banner' not in html.split('id="results"')[0]
 
-    def test_the_coverage_map_survives_suppression(self):
-        """Nothing is lost — the caveat moves from a banner to the place it
-        actually applies."""
-        html = dashboard.render(self._data(), standing_caveats=False)
+    def test_the_coverage_map_carries_the_venue_caveat(self):
+        html = dashboard.render(self._data())
         assert 'id="coverage"' in html
         assert "absence of signal" in html
         assert "D. Nev." in html
 
-    def test_per_row_imputed_marking_survives_suppression(self):
-        html = dashboard.render(self._data(), standing_caveats=False)
+    def test_per_row_imputed_marking_is_where_the_damages_caveat_lives(self):
+        html = dashboard.render(self._data())
         payload = _payload(html)
         assert payload["prospects"][0]["imputed"] is True
         assert payload["prospects"][0]["band"] == dataset.NOT_STATED
         # And the dollar filter still refuses to count an imputed figure.
-        assert "p.imputed || !(p.damages >= f.minDmg" in dashboard._JS \
-            or "p.imputed || !p.damages" in dashboard._JS
+        assert "p.imputed || !p.damages" in dashboard._JS
+
+    def test_an_unhealthy_source_still_reaches_the_top_of_the_page(self):
+        data = make_dataset(
+            sources=[SourceRow("sec_fts", "SEC", "A", "s", "BROKEN", "", "", 2, 0),
+                     SourceRow("ftc", "FTC", "A", "s", "BROKEN", "", "", 1, 0)],
+        )
+        head = dashboard.render(data).split('id="results"')[0]
+        assert "2 SOURCES DOWN" in head
+
+    def test_a_clean_run_says_nothing_alarming(self):
+        """The alert state has to be absent when there is nothing wrong, or it
+        is decoration rather than a signal."""
+        head = dashboard.render(self._data()).split('id="results"')[0]
+        assert "runpill down" not in head
+        assert "DOWN" not in head
+
+

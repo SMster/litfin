@@ -159,8 +159,9 @@ _PANEL_CSS = """
           background: var(--bg); border: 1px solid var(--line); border-radius: 5px;
           padding: 9px; max-height: 220px; overflow: auto; margin-top: 8px; }
 #jobstate { font-size: 12px; color: var(--muted); }
-a.btnlink { font: inherit; padding: 5px 9px; border: 1px solid var(--line);
-            border-radius: 5px; background: var(--panel); color: var(--fg);
+a.btnlink { display: inline-flex; align-items: center; height: 30px;
+            font: inherit; padding: 0 11px; border: 1px solid var(--line);
+            border-radius: 5px; background: var(--chip); color: var(--fg);
             text-decoration: none; cursor: pointer; }
 a.btnlink:hover { background: var(--row-hover); }
 </style>
@@ -590,7 +591,6 @@ class _Handler(BaseHTTPRequestHandler):
                     data,
                     panel_html=_panel_html(self.cfg, self.token, self.read_only),
                     panel_js=_PANEL_JS,
-                    standing_caveats=self.cfg.show_standing_caveats,
                 ))
             elif path == "/api/data":
                 self._json(dataset.to_json(dataset.load(self.db, self.cfg)))

@@ -204,7 +204,6 @@ def build(
             # Relative: the bundle is served from an unguessable directory
             # whose name must not be baked into the page.
             export_href=xlsx.name,
-            standing_caveats=cfg.show_standing_caveats,
         ),
         encoding="utf-8",
     )

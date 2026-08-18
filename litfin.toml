@@ -151,20 +151,6 @@ recipient_allowlist = []
 top_n_email = 20
 top_n_dashboard = 100
 
-# Banner-level repeats of two permanent facts -- that venue coverage is
-# partial, and what share of rows carry no stated damages figure.
-#
-# OFF for this deployment (operator decision, 2026-08-18). Both are true and
-# both are load-bearing, but they are identical every single day, and a banner
-# that never changes trains you to skip the top of the page -- which is where
-# the ALERTS live (a broken source, an unextracted backlog). Those still show.
-#
-# Nothing is lost by turning this off: the venue coverage map still renders in
-# full further down the page, every imputed row is still marked `imputed` in
-# its own cell and lands in the `Not stated` claim-size band, and the dollar
-# filter still refuses to count an imputed figure toward a threshold.
-show_standing_caveats = false
-
 [etrack]
 # NY eTrack alert-email ingestion (Phase 6). OFF, and it takes two separate
 # decisions to turn on.
