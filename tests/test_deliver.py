@@ -659,3 +659,84 @@ class TestServer:
 def _payload(html: str) -> dict:
     raw = html.split("const DATA = ")[1].split("</script>")[0]
     return json.loads(raw.rstrip().rstrip(";").replace("<\\/", "</"))
+
+
+class TestExportLink:
+    """The published bundle ships an .xlsx next to index.html. Without a link
+    nothing on the page can reach it — which is exactly what happened on the
+    first Cloudflare deploy."""
+
+    def test_no_link_when_no_export_is_alongside(self):
+        html = dashboard.render(make_dataset())
+        assert 'class="dl"' not in html, "a download button that 404s is worse than none"
+
+    def test_link_appears_when_an_export_ships_with_it(self):
+        html = dashboard.render(
+            make_dataset(), export_href="litfin-prospects-2026-08-18.xlsx"
+        )
+        assert 'href="litfin-prospects-2026-08-18.xlsx"' in html
+        assert "download" in html
+        assert "Download Excel" in html
+
+    def test_href_is_relative_so_the_secret_path_is_not_baked_in(self):
+        html = dashboard.render(make_dataset(), export_href="x.xlsx")
+        assert 'href="x.xlsx"' in html
+        assert "https://" not in html.split('class="dl"')[0][-200:]
+
+    def test_href_is_escaped(self):
+        html = dashboard.render(make_dataset(), export_href='a" onload="evil')
+        assert 'onload="evil' not in html
+
+
+class TestStandingCaveats:
+    """Two kinds of banner. Alerts are about THIS run and are actionable;
+    standing caveats are permanent facts that read identically every day. Only
+    the second kind is suppressible."""
+
+    def _data(self):
+        return make_dataset(
+            prospects=[make_prospect(damages_usd=None, damages_imputed=True)],
+            counts={"items": 10, "screened_out": 5, "extracted": 3,
+                    "ranked": 1, "awaiting_extraction": 0},
+        )
+
+    def test_caveats_render_by_default(self):
+        """A new operator should meet them."""
+        html = dashboard.render(self._data(), standing_caveats=True)
+        assert "Venue coverage is incomplete" in html
+        assert "no stated damages figure" in html
+
+    def test_caveats_suppressed_when_turned_off(self):
+        html = dashboard.render(self._data(), standing_caveats=False)
+        assert "Venue coverage is incomplete" not in html
+        assert "no stated damages figure" not in html
+
+    def test_ALERTS_still_render_when_caveats_are_off(self):
+        """A broken source and an unextracted backlog are state that changed
+        and that you can act on. Suppressing those would be a bug."""
+        data = make_dataset(
+            sources=[SourceRow("sec_fts", "SEC", "A", "s", "BROKEN", "", "", 2, 0)],
+            counts={"items": 10, "screened_out": 1, "extracted": 1,
+                    "ranked": 1, "awaiting_extraction": 42},
+        )
+        html = dashboard.render(data, standing_caveats=False)
+        assert "not healthy" in html
+        assert "not a quiet day" in html
+        assert "have not been screened" in html
+
+    def test_the_coverage_map_survives_suppression(self):
+        """Nothing is lost — the caveat moves from a banner to the place it
+        actually applies."""
+        html = dashboard.render(self._data(), standing_caveats=False)
+        assert 'id="coverage"' in html
+        assert "absence of signal" in html
+        assert "D. Nev." in html
+
+    def test_per_row_imputed_marking_survives_suppression(self):
+        html = dashboard.render(self._data(), standing_caveats=False)
+        payload = _payload(html)
+        assert payload["prospects"][0]["imputed"] is True
+        assert payload["prospects"][0]["band"] == dataset.NOT_STATED
+        # And the dollar filter still refuses to count an imputed figure.
+        assert "p.imputed || !(p.damages >= f.minDmg" in dashboard._JS \
+            or "p.imputed || !p.damages" in dashboard._JS

@@ -603,3 +603,111 @@ class TestRenderBlueprint:
     def test_entrypoint_exports_env_for_cron(self):
         sh = (DEPLOY / "entrypoint-render.sh").read_text(encoding="utf-8")
         assert "printenv" in sh and "BASH_ENV" in sh
+
+
+# ---------------------------------------------------------------------------
+# Capability-URL publishing
+# ---------------------------------------------------------------------------
+
+class TestSecretPath:
+    """A weaker model than authentication, chosen deliberately. The tests
+    exist because the two ways it fails are both silent: a stale root index
+    that still serves the data, and a path that changes on republish and
+    breaks the recipient's link."""
+
+    def _cfg(self, tmp_path):
+        from litfin.config import Config
+
+        cfg = Config(data_root=tmp_path / "data")
+        cfg.ensure_dirs()
+        return cfg
+
+    def _build(self, tmp_path, **kw):
+        from litfin.deploy import publish
+        from litfin.store.db import Database
+
+        cfg = kw.pop("cfg", None) or self._cfg(tmp_path)
+        db = Database(cfg.db_path)
+        try:
+            segment = publish.secret_path(cfg, rotate=kw.pop("rotate", False))
+            return publish.build(
+                db, cfg, tmp_path / "out", protected_by="unguessable URL",
+                path_segment=segment, **kw,
+            ), segment, cfg
+        finally:
+            db.close()
+
+    def test_path_is_stable_across_republishes(self):
+        """THE thing that matters operationally. A path that regenerates
+        every week breaks the link the recipient already has."""
+        import tempfile
+
+        from litfin.deploy import publish
+
+        with tempfile.TemporaryDirectory() as td:
+            cfg = self._cfg(Path(td))
+            first = publish.secret_path(cfg)
+            for _ in range(5):
+                assert publish.secret_path(cfg) == first
+
+    def test_rotate_mints_a_new_one(self):
+        """The revocation mechanism, and the only one there is."""
+        import tempfile
+
+        from litfin.deploy import publish
+
+        with tempfile.TemporaryDirectory() as td:
+            cfg = self._cfg(Path(td))
+            first = publish.secret_path(cfg)
+            second = publish.secret_path(cfg, rotate=True)
+            assert second != first
+            assert publish.secret_path(cfg) == second
+
+    def test_path_has_real_entropy(self):
+        import tempfile
+
+        from litfin.deploy import publish
+
+        with tempfile.TemporaryDirectory() as td:
+            seg = publish.secret_path(self._cfg(Path(td)))
+        assert len(seg) == 32
+        assert all(c in "0123456789abcdef" for c in seg), "hex only: retyping"
+
+    def test_every_data_file_sits_under_the_secret_path(self, tmp_path):
+        """Leaving the .xlsx at a predictable root path would hand away the
+        whole dataset and make the secret path pointless."""
+        bundle, segment, _ = self._build(tmp_path)
+        for f in bundle.files:
+            rel = f.relative_to(bundle.directory).as_posix()
+            if rel in ("index.html", "404.html", "robots.txt", "_headers"):
+                continue
+            assert rel.startswith(f"{segment}/"), rel
+
+    def test_the_root_index_gives_nothing_away(self, tmp_path):
+        """Anyone reaching the bare hostname should learn only that there is
+        nothing there -- not the project name, not that a secret path exists."""
+        bundle, segment, _ = self._build(tmp_path)
+        root = (bundle.directory / "index.html").read_text(encoding="utf-8")
+        assert segment not in root
+        for leak in ("litfin", "LitFin", "prospect", "dashboard", "xlsx"):
+            assert leak.lower() not in root.lower(), leak
+
+    def test_the_dashboard_is_under_the_secret_path(self, tmp_path):
+        bundle, segment, _ = self._build(tmp_path)
+        page = (bundle.directory / segment / "index.html").read_text(
+            encoding="utf-8"
+        )
+        assert "LitFin" in page
+
+    def test_robots_still_disallows_everything(self, tmp_path):
+        bundle, _, _ = self._build(tmp_path)
+        assert "Disallow: /" in (bundle.directory / "robots.txt").read_text()
+
+    def test_manifest_records_the_weaker_protection_honestly(self, tmp_path):
+        import json
+
+        bundle, segment, _ = self._build(tmp_path)
+        m = json.loads(
+            (bundle.directory / segment / "manifest.json").read_text()
+        )
+        assert "unguessable" in m["protected_by"].lower()

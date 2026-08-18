@@ -770,11 +770,25 @@ def cmd_publish(args: argparse.Namespace) -> int:
     db = Database(cfg.db_path)
     try:
         out = Path(args.out) if args.out else (cfg.data_root / "publish")
+        segment = ""
+        if args.secret_path or args.rotate_path:
+            segment = publish.secret_path(cfg, rotate=args.rotate_path)
         bundle = publish.build(
             db, cfg, out, protected_by=args.protected_by or "",
-            limit=args.limit,
+            limit=args.limit, path_segment=segment,
         )
         print(bundle.to_text())
+        if segment:
+            print()
+            print(f"THE URL IS THE CREDENTIAL. Share exactly this:")
+            print(f"  https://{args.target or '<host>'}/{segment}/")
+            print()
+            print(
+                "Anyone this link reaches has permanent access -- there is no "
+                "revocation short of `--rotate-path`, which breaks every link "
+                "previously shared. The path is persisted so ordinary "
+                "republishes keep the same URL."
+            )
         print()
         print(f"Protected by: {args.protected_by}")
         print()
@@ -1069,6 +1083,17 @@ def main(argv: list[str] | None = None) -> int:
              "allowlist of 2 emails\". Recorded in the bundle manifest.",
     )
     p_pub.add_argument("--limit", type=int, default=None)
+    p_pub.add_argument(
+        "--secret-path", action="store_true",
+        help="put everything under an unguessable directory and leave the "
+             "site root empty, so the URL stands in for authentication. The "
+             "path is persisted and reused across republishes.",
+    )
+    p_pub.add_argument(
+        "--rotate-path", action="store_true",
+        help="mint a NEW secret path. This is the revocation mechanism: it "
+             "breaks every link previously shared.",
+    )
     p_pub.set_defaults(func=cmd_publish)
 
     p_pre = sub.add_parser(

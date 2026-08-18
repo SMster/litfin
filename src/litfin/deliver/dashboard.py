@@ -83,6 +83,10 @@ input[type=search] { min-width: 230px; }
 button { cursor: pointer; background: var(--panel); }
 button:hover { background: var(--row-hover); }
 button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+a.dl { font: inherit; padding: 5px 9px; border: 1px solid var(--line);
+       border-radius: 5px; background: var(--panel); color: var(--fg);
+       text-decoration: none; cursor: pointer; white-space: nowrap; }
+a.dl:hover { background: var(--row-hover); border-color: var(--accent); }
 label.inline { display: inline-flex; align-items: center; gap: 5px;
                color: var(--muted); font-size: 12.5px; }
 .sizebar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
@@ -554,8 +558,28 @@ def _esc(s: object) -> str:
     )
 
 
-def _banners(data: Dataset) -> str:
-    """Warnings that must be impossible to miss, above the table."""
+def _banners(data: Dataset, *, standing_caveats: bool = True) -> str:
+    """Warnings above the table.
+
+    TWO KINDS, and only one of them is worth repeating every morning:
+
+    ALERTS are about THIS run and are actionable -- a source is broken, a
+    backlog is unextracted. State that changed, that you can do something
+    about. These always render.
+
+    STANDING CAVEATS are permanent facts about the data model: venue coverage
+    is partial, most damages figures are imputed. True, load-bearing, and
+    identical every single day. Once an operator has internalized them the
+    banner stops informing and starts training them to skip the top of the
+    page -- which is where the alerts live. Suppressing them is a defensible
+    call, and `deliver.show_standing_caveats = false` makes it.
+
+    NOTHING IS LOST WHEN THEY ARE OFF. The coverage map still renders in full
+    lower down, every imputed row is still marked `imputed` in its own cell
+    and lands in the `Not stated` claim-size band, and the dollar filter still
+    refuses to count imputed figures. The caveats move from a banner to the
+    places they actually apply.
+    """
     out: list[str] = []
 
     broken = data.broken_sources
@@ -578,7 +602,7 @@ def _banners(data: Dataset) -> str:
 
     dark = data.dark_venues
     partial = data.partial_venues
-    if dark or partial:
+    if standing_caveats and (dark or partial):
         out.append(
             f'<div class="banner warn"><b>Venue coverage is incomplete.</b> '
             f"{dark} court(s) publish no PACER RSS feed and {partial} publish "
@@ -587,7 +611,7 @@ def _banners(data: Dataset) -> str:
             f'at the bottom of this page.</div>'
         )
 
-    if data.prospects and data.imputed_count:
+    if standing_caveats and data.prospects and data.imputed_count:
         pct = 100.0 * data.imputed_count / len(data.prospects)
         out.append(
             f'<div class="banner warn">{data.imputed_count} of '
@@ -728,12 +752,20 @@ def _sources_section(data: Dataset) -> str:
 </section>"""
 
 
-def render(data: Dataset, *, panel_html: str = "", panel_js: str = "") -> str:
+def render(
+    data: Dataset, *, panel_html: str = "", panel_js: str = "",
+    export_href: str = "", standing_caveats: bool = True,
+) -> str:
     """Pure: Dataset -> a complete HTML document. No I/O, no clock.
 
     `panel_html`/`panel_js` let the local server graft a control panel onto the
     same page. The static file passes neither, so what you open from a desktop
     shortcut has no buttons that would do nothing.
+
+    `export_href` is the same principle in reverse: the published bundle ships
+    an .xlsx next to index.html, and without a link nothing on the page can
+    reach it. Only set it when the file is genuinely there -- a download button
+    that 404s is worse than no button.
     """
     c = data.counts
     funnel = [
@@ -757,6 +789,11 @@ def render(data: Dataset, *, panel_html: str = "", panel_js: str = "") -> str:
         else """<div class="wrap">
   <table><thead id="thead"></thead><tbody id="tbody"></tbody></table>
 </div>"""
+    )
+
+    export_link = (
+        f'<a href="{_esc(export_href)}" class="dl" download>Download Excel</a>'
+        if export_href else ""
     )
 
     payload = json.dumps(to_json(data), separators=(",", ":"), sort_keys=True)
@@ -786,7 +823,7 @@ def render(data: Dataset, *, panel_html: str = "", panel_js: str = "") -> str:
 
 {panel_html}
 
-{_banners(data)}
+{_banners(data, standing_caveats=standing_caveats)}
 
 <div class="controls">
   <input type="search" id="q" placeholder="search case, description, parties…">
@@ -801,6 +838,7 @@ def render(data: Dataset, *, panel_html: str = "", panel_js: str = "") -> str:
   <button id="reset">Reset</button>
   <button id="expand">Expand / collapse all</button>
   <button id="save" class="primary">Save filter</button>
+  {export_link}
   <span class="sub" style="margin-left:auto">
     <b id="shown"></b> <span id="shown-imputed" class="imputed"></span>
   </span>
@@ -845,7 +883,7 @@ def write(
 ) -> Path:
     """Render the dashboard and write it where the desktop shortcut points."""
     data = load(db, cfg, limit=limit)
-    html = render(data)
+    html = render(data, standing_caveats=cfg.show_standing_caveats)
 
     target = out_path or (cfg.data_root / "dashboard.html")
     target.parent.mkdir(parents=True, exist_ok=True)

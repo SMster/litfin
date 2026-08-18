@@ -34,3 +34,11 @@ tests/fixtures/stretto/
 # Generated deliverables, in case data_root is ever pointed at the repo.
 dashboard.html
 *.xlsx
+
+# Wrangler local state (account id cache, Pages deploy cache).
+.wrangler/
+
+# The capability-URL path segment, if data_root is ever pointed at the repo.
+# It IS the credential for the published dashboard.
+.publish-secret-path
+publish/

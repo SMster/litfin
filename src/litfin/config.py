@@ -123,6 +123,12 @@ class Config:
     recipient_allowlist: tuple[str, ...] = ()
     top_n_email: int = 20
     top_n_dashboard: int = 100
+    # Banner-level repeats of permanent facts (partial venue coverage, the
+    # imputed-damages share). True by default so a new operator meets them;
+    # turn off once they are internalized. Nothing is lost -- the coverage
+    # map still renders in full, every imputed row is still marked, and the
+    # dollar filter still refuses to count an imputed figure.
+    show_standing_caveats: bool = True
 
     # NY eTrack email ingestion (Phase 6). TWO fields, both required, because
     # they record two different decisions: `etrack_enabled` is the operational
@@ -289,6 +295,9 @@ def load_config(path: Path | None = None) -> Config:
         ),
         top_n_email=int(deliver_raw.get("top_n_email", 20)),
         top_n_dashboard=int(deliver_raw.get("top_n_dashboard", 100)),
+        show_standing_caveats=bool(
+            deliver_raw.get("show_standing_caveats", True)
+        ),
         etrack_enabled=bool(etrack_raw.get("enabled", False)),
         etrack_decision_recorded=str(etrack_raw.get("decision_recorded", "")),
         score_weights=tuple(

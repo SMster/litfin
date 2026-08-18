@@ -53,12 +53,62 @@ class UnprotectedTarget(RuntimeError):
     """Raised rather than publishing case analysis to an open host."""
 
 
+# ---------------------------------------------------------------------------
+# Capability URLs
+#
+# A weaker model than real authentication, chosen deliberately when the
+# friction of signing in is not wanted. The URL itself is the credential:
+# 128 bits of randomness in the path, nothing at the root.
+#
+# BE HONEST ABOUT WHAT THIS IS AND IS NOT.
+#
+#   It stops:   somebody guessing litfin.pages.dev, and search indexing.
+#   It does NOT stop: anyone the link is ever forwarded to, permanently.
+#     There is no revocation short of rotating the path, and no audit of who
+#     opened it. It will sit in browser history, in chat logs, in the referer
+#     header of anything the page links out to, and in any corporate proxy
+#     between the reader and Cloudflare.
+#
+# THE PATH MUST BE STABLE across republishes or the recipient's link breaks
+# every week, which is why it is persisted rather than regenerated. Rotating
+# it is the revocation mechanism, and is therefore explicit.
+# ---------------------------------------------------------------------------
+
+_PATH_FILE = ".publish-secret-path"
+
+# Hex rather than base64url: no case-sensitivity trap, no '-'/'_' to garble
+# when somebody retypes it out of a chat message. 32 chars, 128 bits.
+_PATH_BYTES = 16
+
+
+def secret_path(cfg, *, rotate: bool = False) -> str:
+    """The stable random path segment for this deployment.
+
+    Persisted under data_root so every republish lands on the same URL. Pass
+    rotate=True to mint a new one -- which is exactly the act of revoking
+    every link previously shared, and should feel like one.
+    """
+    import secrets
+
+    store = Path(cfg.data_root) / _PATH_FILE
+    if store.is_file() and not rotate:
+        existing = store.read_text(encoding="utf-8").strip()
+        if existing:
+            return existing
+
+    value = secrets.token_hex(_PATH_BYTES)
+    store.parent.mkdir(parents=True, exist_ok=True)
+    store.write_text(value, encoding="utf-8")
+    return value
+
+
 @dataclass(slots=True)
 class Bundle:
     directory: Path
     files: list[Path] = field(default_factory=list)
     matters: int = 0
     generated_at: str = ""
+    path_segment: str = ""
 
     @property
     def total_bytes(self) -> int:
@@ -70,8 +120,13 @@ class Bundle:
             f"  matters : {self.matters}",
             f"  files   : {len(self.files)} ({self.total_bytes / 1024:.0f} KB)",
         ]
+        if self.path_segment:
+            lines.append(f"  url path: /{self.path_segment}/")
         for f in self.files:
-            lines.append(f"     {f.name}")
+            # Relative, not just the name: with a secret path there are two
+            # index.html files and a bare listing cannot tell you which is the
+            # decoy at the root and which is the dashboard.
+            lines.append(f"     {f.relative_to(self.directory).as_posix()}")
         return "\n".join(lines)
 
 
@@ -110,8 +165,14 @@ def assert_target_protected(target: str, *, protected_by: str = "") -> None:
 
 def build(
     db, cfg, out_dir: Path, *, protected_by: str = "", limit: int | None = None,
+    path_segment: str = "",
 ) -> Bundle:
-    """Render the dashboard and export into a directory ready to upload."""
+    """Render the dashboard and export into a directory ready to upload.
+
+    `path_segment` puts everything under an unguessable directory and leaves
+    the site root with nothing but robots.txt. Used when the URL is standing
+    in for authentication.
+    """
     from ..deliver import dashboard, dataset, excel
 
     out_dir = Path(out_dir)
@@ -121,14 +182,32 @@ def build(
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True)
 
+    # Everything that carries case data goes under the secret segment --
+    # including the spreadsheet and the manifest. Leaving the .xlsx at a
+    # predictable root path would hand away the whole dataset and make the
+    # secret path pointless.
+    content_dir = (out_dir / path_segment) if path_segment else out_dir
+    content_dir.mkdir(parents=True, exist_ok=True)
+
     data = dataset.load(db, cfg, limit=limit)
 
-    index = out_dir / "index.html"
-    index.write_text(dashboard.render(data), encoding="utf-8")
-
+    # Excel FIRST, so the dashboard can link a file that already exists. A
+    # download button that 404s is worse than no button.
     stamp = data.generated_at[:10]
-    xlsx = out_dir / f"litfin-prospects-{stamp}.xlsx"
+    xlsx = content_dir / f"litfin-prospects-{stamp}.xlsx"
     excel.build(data, xlsx, limit=limit)
+
+    index = content_dir / "index.html"
+    index.write_text(
+        dashboard.render(
+            data,
+            # Relative: the bundle is served from an unguessable directory
+            # whose name must not be baked into the page.
+            export_href=xlsx.name,
+            standing_caveats=cfg.show_standing_caveats,
+        ),
+        encoding="utf-8",
+    )
 
     # Belt and braces against a host that ignores its own defaults.
     (out_dir / "robots.txt").write_text(
@@ -162,12 +241,28 @@ def build(
         # artifact never touched a third-party source.
         "fetches_anything": False,
     }
-    (out_dir / "manifest.json").write_text(
+    (content_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2), encoding="utf-8"
     )
 
-    files = sorted(p for p in out_dir.iterdir() if p.is_file())
+    if path_segment:
+        # The root must give away nothing -- not the project name, not that a
+        # secret path exists, not a link to it. Anyone who reaches the bare
+        # hostname should learn only that there is nothing here.
+        (out_dir / "index.html").write_text(
+            "<!doctype html><meta charset=utf-8><title>Not found</title>"
+            "<p>Not found.</p>",
+            encoding="utf-8",
+        )
+        (out_dir / "404.html").write_text(
+            "<!doctype html><meta charset=utf-8><title>Not found</title>"
+            "<p>Not found.</p>",
+            encoding="utf-8",
+        )
+
+    files = sorted(p for p in out_dir.rglob("*") if p.is_file())
     return Bundle(
         directory=out_dir, files=files,
         matters=len(data.prospects), generated_at=data.generated_at,
+        path_segment=path_segment,
     )

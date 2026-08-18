@@ -590,6 +590,7 @@ class _Handler(BaseHTTPRequestHandler):
                     data,
                     panel_html=_panel_html(self.cfg, self.token, self.read_only),
                     panel_js=_PANEL_JS,
+                    standing_caveats=self.cfg.show_standing_caveats,
                 ))
             elif path == "/api/data":
                 self._json(dataset.to_json(dataset.load(self.db, self.cfg)))
